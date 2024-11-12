@@ -83,7 +83,8 @@ resource "aws_s3_bucket_policy" "cloudtrail_bucket_policy" {
         Resource = "arn:aws:s3:::${aws_s3_bucket.cloudtrail_bucket.bucket}/AWSLogs/${data.aws_caller_identity.current.account_id}/*",
         Condition = {
           StringEquals = {
-            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id,
+            "s3:x-amz-acl" = "bucket-owner-full-control"  # Ensures full control for bucket owner
           },
           ArnLike = {
             "aws:SourceArn" = "arn:aws:cloudtrail:*:${data.aws_caller_identity.current.account_id}:trail/*"
