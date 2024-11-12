@@ -141,7 +141,7 @@ resource "aws_cloudwatch_dashboard" "payment_processing_dashboard" {
           ],
           "view" : "timeSeries",
           "stacked" : false,
-          "region" : var.region,
+          "region" : var.aws_region,
           "stat" : "Sum",
           "period" : 300,
           "title" : "Payment Processing Metrics"
