@@ -66,25 +66,40 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "cloudtrail_bucket
   }
 }
 
-# S3 Bucket Policy to allow CloudTrail to write logs
+data "aws_caller_identity" "current" {}
+
 resource "aws_s3_bucket_policy" "cloudtrail_bucket_policy" {
   bucket = aws_s3_bucket.cloudtrail_bucket.bucket
 
-  policy = data.aws_iam_policy_document.cloudtrail_policy.json
-}
-
-data "aws_iam_policy_document" "cloudtrail_policy" {
-  statement {
-    actions   = ["s3:PutObject"]
-    resources = [
-      "arn:aws:s3:::${aws_s3_bucket.cloudtrail_bucket.bucket}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        },
+        Action = "s3:PutObject",
+        Resource = "arn:aws:s3:::${aws_s3_bucket.cloudtrail_bucket.bucket}/AWSLogs/${data.aws_caller_identity.current.account_id}/*",
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          },
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:cloudtrail:*:${data.aws_caller_identity.current.account_id}:trail/*"
+          }
+        }
+      },
+      {
+        Effect = "Allow",
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        },
+        Action = "s3:GetBucketAcl",
+        Resource = "arn:aws:s3:::${aws_s3_bucket.cloudtrail_bucket.bucket}"
+      }
     ]
-    condition {
-      test     = "StringEquals"
-      variable = "aws:SourceAccount"
-      values   = [data.aws_caller_identity.current.account_id]
-    }
-  }
+  })
 }
 
 # Enable GuardDuty for Threat Detection
@@ -111,7 +126,7 @@ resource "aws_cloudwatch_event_rule" "guardduty_findings_rule" {
   description = "Trigger notification for GuardDuty findings"
 
   event_pattern = jsonencode({
-    source      = ["aws.guardduty"],
+    source        = ["aws.guardduty"],
     "detail-type" = ["GuardDuty Finding"],
   })
 }
