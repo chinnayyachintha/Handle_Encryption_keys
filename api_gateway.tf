@@ -56,6 +56,7 @@ resource "aws_lambda_permission" "allow_api_gateway_payment" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.payment_processing_lambda.function_name
   principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.payment_api.execution_arn}/*/POST/payments"
 }
 
 resource "aws_lambda_permission" "allow_api_gateway_tokenization" {
@@ -63,13 +64,16 @@ resource "aws_lambda_permission" "allow_api_gateway_tokenization" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.tokenization_lambda.function_name
   principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.payment_api.execution_arn}/*/POST/tokenization"
 }
 
 # Deploy the API Gateway
 resource "aws_api_gateway_deployment" "api_deployment" {
   depends_on = [
     aws_api_gateway_integration.payment_integration,
-    aws_api_gateway_integration.tokenization_integration
+    aws_api_gateway_integration.tokenization_integration,
+    aws_lambda_permission.allow_api_gateway_payment,
+    aws_lambda_permission.allow_api_gateway_tokenization
   ]
   rest_api_id = aws_api_gateway_rest_api.payment_api.id
   stage_name  = var.stage_name
