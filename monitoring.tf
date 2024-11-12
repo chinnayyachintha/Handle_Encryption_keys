@@ -59,6 +59,9 @@ resource "aws_cloudtrail" "payment_processing_trail" {
   enable_logging                = true
 }
 
+# Get current account id
+data "aws_caller_identity" "current" {}
+
 
 # S3 Bucket to store CloudTrail logs
 resource "aws_s3_bucket" "cloudtrail_bucket" {
@@ -76,6 +79,34 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "cloudtrail_bucket
   }
 }
 
+# S3 Bucket Policy to allow CloudTrail to write logs
+resource "aws_s3_bucket_policy" "cloudtrail_bucket_policy" {
+  bucket = aws_s3_bucket.cloudtrail_bucket.bucket
+
+  policy = data.aws_iam_policy_document.cloudtrail_policy.json
+}
+
+# Define the CloudTrail bucket policy document
+data "aws_iam_policy_document" "cloudtrail_policy" {
+  statement {
+    actions   = ["s3:PutObject"]
+    resources = [
+      "arn:aws:s3:::${aws_s3_bucket.cloudtrail_bucket.bucket}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+    ]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+    condition {
+      test     = "StringLike"
+      variable = "aws:SourceArn"
+      values   = [
+        "arn:aws:cloudtrail:${var.region}:${data.aws_caller_identity.current.account_id}:trail/${var.cloudtrail_name}"
+      ]
+    }
+  }
+}
 
 # Enabling GuardDuty for Threat Detection
 # GuardDuty analyzes VPC Flow Logs, CloudTrail events, and DNS logs to detect unusual activity.
@@ -90,9 +121,11 @@ resource "aws_sns_topic" "guardduty_alerts" {
   name = "${var.project_name}-GuardDutyAlerts"
 }
 
+# Accept GuardDuty invitation from the master account
 resource "aws_guardduty_invite_accepter" "accepter" {
   detector_id       = aws_guardduty_detector.payment_processing_detector.id
   master_account_id = var.aws_account_id
+  accept_invitation = true  # Make sure to accept the invitation
 }
 
 # Subscription for GuardDuty Alerts
@@ -101,6 +134,42 @@ resource "aws_sns_topic_subscription" "guardduty_subscription" {
   topic_arn = aws_sns_topic.guardduty_alerts.arn
   protocol  = "email"
   endpoint  = each.value
+}
+
+# Add GuardDuty finding notifications to SNS topic
+resource "aws_guardduty_member" "member" {
+  detector_id     = aws_guardduty_detector.payment_processing_detector.id
+  account_id      = var.aws_account_id
+  email           = var.guardduty_alert_email
+  status          = "ENABLED"
+  invite          = false
+  master_account_id = var.aws_account_id  # Optional: Set to the master account ID if needed
+}
+
+# Configure CloudWatch Event to trigger notifications on GuardDuty findings
+resource "aws_cloudwatch_event_rule" "guardduty_findings_rule" {
+  name        = "GuardDutyFindingsRule"
+  description = "Trigger notification for GuardDuty findings"
+
+  event_pattern = jsonencode({
+    source = ["aws.guardduty"],
+    detail-type = ["GuardDuty Finding"],
+  })
+}
+
+# CloudWatch Event Target to send alerts to SNS topic
+resource "aws_cloudwatch_event_target" "send_to_sns" {
+  rule      = aws_cloudwatch_event_rule.guardduty_findings_rule.name
+  arn       = aws_sns_topic.guardduty_alerts.arn
+  target_id = "GuardDutyFindingsTarget"
+}
+
+# Allow CloudWatch Events to publish to SNS
+resource "aws_lambda_permission" "allow_sns_publish" {
+  statement_id  = "AllowSNSPublish"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_cloudwatch_event_target.send_to_sns.target_id
+  principal     = "sns.amazonaws.com"
 }
 
 
