@@ -67,3 +67,13 @@ output "encryption_key_id" {
   description = "ID of the KMS key for card data encryption"
   value       = aws_kms_key.encryption_key.key_id
 }
+
+output "alarm_notification_subscribed_emails" {
+  description = "List of emails subscribed to the alarm notifications SNS topic"
+  value       = [for sub in aws_sns_topic_subscription.alarm_email_subscription : sub.endpoint]
+}
+
+output "guardduty_alert_subscribed_emails" {
+  description = "List of emails subscribed to the GuardDuty alerts SNS topic"
+  value       = [for sub in aws_sns_topic_subscription.guardduty_subscription : sub.endpoint]
+}

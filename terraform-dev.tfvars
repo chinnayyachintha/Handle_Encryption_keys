@@ -9,3 +9,10 @@ stage_name = "dev"
 
 # specify the AWS account ID
 aws_account_id = "381492076419"
+
+# specify the email addresses to subscribe to GuardDuty alerts
+guardduty_alert_emails = ["a@gmail.com", "b@gmail.com"]
+
+# specify the email addresses to subscribe to Alarm notifications
+alarm_notification_emails = ["a@gmail.com", "b@gmail.com"]
+
