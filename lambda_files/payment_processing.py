@@ -1,67 +1,74 @@
-# Logic for paymentProcessingLambda:
-# Verify JWT: Check the token’s issuer (iss), audience (aud), issue time (iat), and expiration (exp).
-# Decrypt Payload: Decrypt sensitive data encrypted with KMS.
-# Process Payment: Simulate payment processing after successful JWT verification.
+# Retrieve the card data and validate input.
+# Encrypt the card data using AWS KMS.
+# Create and sign a JWT containing relevant metadata and encrypted card data.
 
+import json
+import base64
 import os
-import jwt
 import boto3
-from botocore.exceptions import ClientError
-from datetime import datetime
+import jwt
+from datetime import datetime, timedelta
 
+# Initialize KMS client and environment variables
 kms_client = boto3.client('kms')
+ISSUER = os.environ['ISSUER']
+AUDIENCE = os.environ['AUDIENCE']
+JWT_SIGNING_KEY_ALIAS = os.environ['JWT_SIGNING_KEY_ALIAS']
+JWT_ENCRYPTION_KEY_ALIAS = os.environ['JWT_ENCRYPTION_KEY_ALIAS']
 
-# Environment Variables
-ISSUER = os.getenv("ISSUER")
-AUDIENCE = os.getenv("AUDIENCE")
-JWT_SIGNING_KEY_ALIAS = os.getenv("JWT_SIGNING_KEY_ALIAS")
-JWT_ENCRYPTION_KEY_ALIAS = os.getenv("JWT_ENCRYPTION_KEY_ALIAS")
+def encrypt_data(data):
+    # Encrypt sensitive data (card details) using AWS KMS
+    response = kms_client.encrypt(
+        KeyId=JWT_ENCRYPTION_KEY_ALIAS,
+        Plaintext=data.encode('utf-8')
+    )
+    return base64.b64encode(response['CiphertextBlob']).decode('utf-8')
 
-def verify_jwt(token):
+def sign_jwt(payload):
+    # Sign JWT with KMS using the specified signing key alias
+    now = datetime.utcnow()
+    token_payload = {
+        "iss": ISSUER,
+        "aud": AUDIENCE,
+        "iat": now,
+        "exp": now + timedelta(minutes=30),
+        "data": payload  # The encrypted card data as payload
+    }
+    signed_token = jwt.encode(token_payload, JWT_SIGNING_KEY_ALIAS, algorithm="RS256")
+    return signed_token
+
+def lambda_handler(event, context):
+    # Retrieve card details from the request
+    body = json.loads(event.get('body', '{}'))
+    card_number = body.get('card_number')
+    cvv = body.get('cvv')
+    expiry_date = body.get('expiry_date')
+
+    # Validate required fields
+    if not card_number or not cvv or not expiry_date:
+        return {
+            'statusCode': 400,
+            'body': json.dumps({"error": "Missing required fields"})
+        }
+
     try:
-        decoded_token = jwt.decode(
-            token,
-            key="your-public-key",  # Replace with actual public key from KMS
-            algorithms=["RS256"],
-            audience=AUDIENCE,
-            issuer=ISSUER
-        )
-        return decoded_token
-    except jwt.ExpiredSignatureError:
-        raise ValueError("Token expired")
-    except jwt.InvalidAudienceError:
-        raise ValueError("Invalid audience")
-    except jwt.InvalidIssuerError:
-        raise ValueError("Invalid issuer")
+        # Encrypt card details
+        sensitive_data = f"{card_number}:{cvv}:{expiry_date}"
+        encrypted_data = encrypt_data(sensitive_data)
+
+        # Sign JWT with the encrypted card data as payload
+        jwt_token = sign_jwt(encrypted_data)
+
+        return {
+            'statusCode': 200,
+            'body': json.dumps({
+                "jwt_token": jwt_token,
+                "message": "Data successfully encrypted and signed."
+            })
+        }
+
     except Exception as e:
-        raise ValueError(f"JWT verification failed: {str(e)}")
-
-def decrypt_data(ciphertext):
-    try:
-        response = kms_client.decrypt(
-            CiphertextBlob=bytes(ciphertext, 'utf-8'),
-            KeyId=JWT_ENCRYPTION_KEY_ALIAS
-        )
-        return response['Plaintext'].decode('utf-8')
-    except ClientError as e:
-        raise ValueError(f"Decryption failed: {e}")
-
-def handler(event, context):
-    token = event.get("jwt_token")
-    encrypted_data = event.get("encrypted_data")
-    
-    # Verify JWT
-    try:
-        verified_jwt = verify_jwt(token)
-    except ValueError as e:
-        return {"status": "error", "message": str(e)}
-    
-    # Decrypt Data
-    try:
-        decrypted_data = decrypt_data(encrypted_data)
-    except ValueError as e:
-        return {"status": "error", "message": str(e)}
-    
-    # Process Payment Logic (mocked)
-    # Assume successful payment
-    return {"status": "success", "message": "Payment processed successfully"}
+        return {
+            'statusCode': 500,
+            'body': json.dumps({"error": str(e)})
+        }

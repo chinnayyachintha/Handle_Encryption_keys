@@ -15,7 +15,8 @@ resource "aws_api_gateway_method" "payment_method" {
   rest_api_id   = aws_api_gateway_rest_api.payment_api.id
   resource_id   = aws_api_gateway_resource.payment_resource.id
   http_method   = "POST"
-  authorization = "NONE" # Replace with Lambda authorizer if needed
+  authorization = "CUSTOM"  # Use CUSTOM authorization (Lambda Authorizer)
+  authorizer_id = aws_api_gateway_authorizer.oauth_authorizer.id
 }
 
 resource "aws_api_gateway_integration" "payment_integration" {
@@ -38,7 +39,8 @@ resource "aws_api_gateway_method" "tokenization_method" {
   rest_api_id   = aws_api_gateway_rest_api.payment_api.id
   resource_id   = aws_api_gateway_resource.tokenization_resource.id
   http_method   = "POST"
-  authorization = "NONE" # Replace with Lambda authorizer if needed
+  authorization = "CUSTOM"  # Use CUSTOM authorization (Lambda Authorizer)
+  authorizer_id = aws_api_gateway_authorizer.oauth_authorizer.id
 }
 
 resource "aws_api_gateway_integration" "tokenization_integration" {
@@ -48,6 +50,14 @@ resource "aws_api_gateway_integration" "tokenization_integration" {
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = "arn:aws:apigateway:${var.aws_region}:lambda:path/2015-03-31/functions/${aws_lambda_function.tokenization_lambda.arn}/invocations"
+}
+# Lambda Authorizer for API Gateway
+resource "aws_api_gateway_authorizer" "oauth_authorizer" {
+  rest_api_id = aws_api_gateway_rest_api.payment_api.id
+  name        = "${var.project_name}-OAuth-Authorizer"
+  type        = "TOKEN"
+  identity_source = "method.request.header.Authorization"
+  authorizer_uri = "arn:aws:apigateway:${var.aws_region}:lambda:path/2015-03-31/functions/${aws_lambda_function.authorizer_lambda.arn}/invocations"
 }
 
 # Permissions to allow API Gateway to invoke each Lambda function
