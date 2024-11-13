@@ -115,6 +115,52 @@ This repository contains the implementation for securing payment processing thro
    - Error handling, logging, and monitoring are correctly implemented.
 
 ---
+## Workflow
+
+### 1. Frontend (Card Data Capturing)
+- The user enters their credit card details, such as the card number and CVV, into the UI (e.g., a secure form).
+
+### 2. Encryption During Transmission
+- The card data is encrypted during transmission to ensure that it is secure over the network.
+- This encryption is typically done using a secure protocol like HTTPS, which ensures confidentiality and prevents data interception during transit.
+
+### 3. Backend (Decryption)
+- Once the encrypted card data is received on the backend, it is decrypted.
+- The decryption process is handled by a secure service like AWS KMS (Key Management Service) using the decryption key that was used during the encryption phase.
+- The backend now has access to the decrypted card details (e.g., card number and CVV).
+
+### 4. Tokenization (After Decryption)
+- After the card data is decrypted, it is passed to a tokenization service.
+- The tokenization service replaces the sensitive card details (e.g., card number) with a secure, non-sensitive token.
+- Example: The card number `4111 1111 1111 1111` could be replaced with a token such as `TOKEN123456789`.
+- This token has no direct mapping to the actual card number outside of the tokenization service.
+
+### 5. Use of Token for Transaction
+- The backend sends the generated token (not the raw card number) to the payment processor.
+- The payment processor uses its own tokenization database to look up the actual card number associated with the token and processes the transaction.
+- The token is used for further processing and can be stored for future transactions.
+
+### 6. Token Storage
+- The backend stores the token for future use, such as recurring payments, but never stores the raw card details.
+- The token can be securely managed and revoked if needed, but the raw credit card information is never stored in the backend system, reducing the risk of a data breach.
+
+## Security Considerations
+- **Encryption**: Encryption during transmission ensures that sensitive data is not exposed while being sent over the network.
+- **Tokenization**: Tokenization ensures that sensitive card details are never directly stored or processed in the backend system. Only a non-sensitive token is used for transactions.
+- **Decryption**: The decryption step only occurs in secure environments and is done using services like AWS KMS to manage and rotate encryption keys.
+- **Token Storage**: Storing tokens instead of raw card details reduces security risks in the event of a data breach.
+
+## Dependencies
+- **AWS KMS**: For encryption key management.
+- **Tokenization Service**: A service or system that handles the tokenization of card data.
+- **HTTPS**: For secure communication between the frontend and backend.
+
+## Testing
+- End-to-end testing should verify that encryption, decryption, and tokenization processes work as expected.
+- Ensure that sensitive data is never exposed or stored inappropriately.
+- Test that the tokenization process does not leak sensitive information.
+
+"""
 
 ## Conclusion
 
